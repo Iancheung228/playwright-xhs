@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+debug_state.json
+cookies_rednote.json
+
+# scraped post folders (post ID pattern)
+[0-9a-f]*/
