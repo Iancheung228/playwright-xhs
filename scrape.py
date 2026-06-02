@@ -415,27 +415,39 @@ def save_post_json(post: dict):
     print(f"[→] Saved metadata to {dest}")
 
 
-def log_url(post: dict, url: str):
-    log_file = pathlib.Path("scraped_links.json")
-    entries = json.loads(log_file.read_text()) if log_file.exists() else []
+def update_index(post: dict, url: str):
+    index_file = pathlib.Path("index.json")
+    entries = json.loads(index_file.read_text()) if index_file.exists() else []
 
-    # Update existing entry if post ID already present, otherwise append
     ids = [e["post_id"] for e in entries]
+    analysis = post.get("analysis") or {}
     entry = {
-        "url": url,
         "post_id": post["id"],
+        "url": url,
         "title": post["title"],
         "type": post["type"],
         "author": post["author"],
-        "scraped_at": datetime.datetime.now().strftime("%Y-%m-%d"),
+        "author_id": post["author_id"],
+        "posted_at": post["posted_at"],
+        "ip_location": post["ip_location"],
+        "likes": post["likes"],
+        "collects": post["collects"],
+        "comments": post["comments"],
+        "shares": post["shares"],
+        "tags": post["tags"],
+        "images_count": len(post["images"]),
+        "has_video": bool(post["video"]),
+        "has_analysis": bool(analysis),
+        "content_type": analysis.get("content_type", ""),
+        "scraped_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     if post["id"] in ids:
         entries[ids.index(post["id"])] = entry
     else:
         entries.append(entry)
 
-    log_file.write_text(json.dumps(entries, indent=2, ensure_ascii=False))
-    print(f"[→] Logged to scraped_links.json ({len(entries)} total)")
+    index_file.write_text(json.dumps(entries, indent=2, ensure_ascii=False))
+    print(f"[→] Index updated: index.json ({len(entries)} posts)")
 
 
 def print_post(post: dict):
@@ -522,7 +534,7 @@ def main():
 
     print_post(post)
     save_post_json(post)
-    log_url(post, url)
+    update_index(post, url)
 
 
 if __name__ == "__main__":
