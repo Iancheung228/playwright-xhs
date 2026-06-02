@@ -156,9 +156,9 @@ def extract_post(state: dict) -> dict:
 
 def download_images(post: dict):
     import requests
-    folder = pathlib.Path(post["id"])
-    folder.mkdir(exist_ok=True)
-    print(f"[→] Downloading {len(post['images'])} image(s) to ./{post['id']}/")
+    folder = pathlib.Path(post["id"]) / "images"
+    folder.mkdir(parents=True, exist_ok=True)
+    print(f"[→] Downloading {len(post['images'])} image(s) to ./{post['id']}/images/")
     for i, url in enumerate(post["images"]):
         dest = folder / f"{i+1:02d}.jpg"
         resp = requests.get(url, headers=HEADERS, timeout=15)
@@ -335,7 +335,7 @@ def analyze_images(post: dict) -> dict:
         print("[!] GEMINI_API_KEY env var not set. Export it and retry.")
         sys.exit(1)
 
-    folder = pathlib.Path(post["id"])
+    folder = pathlib.Path(post["id"]) / "images"
     image_paths = sorted(folder.glob("*.jpg"))
     if not image_paths:
         print("[!] No downloaded images found — run without --analyze first or images failed to download.")
