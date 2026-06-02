@@ -415,6 +415,29 @@ def save_post_json(post: dict):
     print(f"[→] Saved metadata to {dest}")
 
 
+def log_url(post: dict, url: str):
+    log_file = pathlib.Path("scraped_links.json")
+    entries = json.loads(log_file.read_text()) if log_file.exists() else []
+
+    # Update existing entry if post ID already present, otherwise append
+    ids = [e["post_id"] for e in entries]
+    entry = {
+        "url": url,
+        "post_id": post["id"],
+        "title": post["title"],
+        "type": post["type"],
+        "author": post["author"],
+        "scraped_at": datetime.datetime.now().strftime("%Y-%m-%d"),
+    }
+    if post["id"] in ids:
+        entries[ids.index(post["id"])] = entry
+    else:
+        entries.append(entry)
+
+    log_file.write_text(json.dumps(entries, indent=2, ensure_ascii=False))
+    print(f"[→] Logged to scraped_links.json ({len(entries)} total)")
+
+
 def print_post(post: dict):
     sep = "─" * 60
     print(f"\n{sep}")
@@ -499,6 +522,7 @@ def main():
 
     print_post(post)
     save_post_json(post)
+    log_url(post, url)
 
 
 if __name__ == "__main__":
