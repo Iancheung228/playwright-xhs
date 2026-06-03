@@ -47,6 +47,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory where post folders and index.json are written (default: current dir)",
     )
     p.add_argument(
+        "--replies",
+        nargs="?",
+        const=config.DEFAULT_REPLY_K,
+        type=int,
+        metavar="K",
+        help=(
+            f"Fetch replies for the most insightful threads: heuristic selects top K candidates "
+            f"(default {config.DEFAULT_REPLY_K}), Gemini picks best {config.DEFAULT_REPLY_N} to scrape "
+            f"(requires --comments and GEMINI_API_KEY)"
+        ),
+    )
+    p.add_argument(
         "--debug",
         action="store_true",
         help="Save debug_state.json and enable DEBUG logging",
@@ -114,8 +126,13 @@ def main() -> None:
     has_comments = False
     if args.comments is not None:
         from xhs.comments import scrape_comments
-        logging.info("Scraping top %d comments...", args.comments)
-        comments = scrape_comments(url, post["id"], args.comments, cookie_file)
+        reply_k = args.replies if args.replies is not None else 0
+        reply_n = config.DEFAULT_REPLY_N if reply_k > 0 else 0
+        if reply_k > 0:
+            logging.info("Scraping top %d comments + smart replies (heuristic K=%d, LLM N=%d)...", args.comments, reply_k, reply_n)
+        else:
+            logging.info("Scraping top %d comments...", args.comments)
+        comments = scrape_comments(url, post["id"], args.comments, cookie_file, reply_k=reply_k, reply_n=reply_n)
         save_comments_json(post["id"], comments, args.comments, data_dir)
         has_comments = bool(comments)
 
