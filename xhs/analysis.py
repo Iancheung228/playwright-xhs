@@ -95,7 +95,8 @@ def analyze_video(post: dict, data_dir: pathlib.Path) -> dict:
             logger.error("Gemini file processing failed.")
             return {}
 
-        logger.info("Analyzing with %s...", config.GEMINI_MODEL)
+        MAX_RETRIES = 6
+        RETRY_DELAYS = [15, 30, 60, 120, 180, 300]
         prompt = """This is a video from Xiaohongshu (Little Red Book), a Chinese social media platform.
 
 Analyze the video and return a JSON object with exactly these keys:
@@ -137,16 +138,40 @@ Return only valid JSON with no markdown formatting."""
                 "description": {"type": "string"},
             },
         }
-        response = client.models.generate_content(
-            model=config.GEMINI_MODEL,
-            contents=[
-                {"role": "user", "parts": [
-                    {"file_data": {"file_uri": video_file.uri, "mime_type": "video/mp4"}},
-                    {"text": prompt},
-                ]},
-            ],
-            config={"response_mime_type": "application/json", "response_schema": video_schema},
-        )
+        from google.genai import errors as genai_errors
+        FALLBACK_MODELS = [config.GEMINI_MODEL, "gemini-1.5-flash-002"]
+        response = None
+        for model_name in FALLBACK_MODELS:
+            for attempt in range(MAX_RETRIES):
+                try:
+                    logger.info("Analyzing with %s (attempt %d)...", model_name, attempt + 1)
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            {"role": "user", "parts": [
+                                {"file_data": {"file_uri": video_file.uri, "mime_type": "video/mp4"}},
+                                {"text": prompt},
+                            ]},
+                        ],
+                        config={"response_mime_type": "application/json", "response_schema": video_schema},
+                    )
+                    break
+                except (genai_errors.ServerError, genai_errors.ClientError) as exc:
+                    is_quota = isinstance(exc, genai_errors.ClientError) and "RESOURCE_EXHAUSTED" in str(exc)
+                    if is_quota:
+                        logger.warning("Model %s: quota exhausted on free tier — skipping.", model_name)
+                        break
+                    if attempt == MAX_RETRIES - 1:
+                        logger.warning("Model %s exhausted retries — trying next model.", model_name)
+                    else:
+                        delay = RETRY_DELAYS[attempt]
+                        logger.warning("Gemini 503 on %s (attempt %d/%d) — retrying in %ds...", model_name, attempt + 1, MAX_RETRIES, delay)
+                        time.sleep(delay)
+            if response is not None:
+                break
+        if response is None:
+            logger.error("All models failed. Video analysis skipped — run --analyze again later.")
+            return {}
         result = parse_gemini_json(response.text)
         result["model"] = config.GEMINI_MODEL
         result["analyzed_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

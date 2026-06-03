@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XHS Chat</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 280px;
+      min-width: 220px;
+      background: #fff;
+      border-right: 1px solid #e5e5e5;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #sidebar-header {
+      padding: 18px 16px 12px;
+      border-bottom: 1px solid #e5e5e5;
+    }
+
+    #sidebar-header h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ff2442;
+      letter-spacing: 0.3px;
+    }
+
+    #sidebar-header p {
+      font-size: 11px;
+      color: #999;
+      margin-top: 2px;
+    }
+
+    #post-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+
+    .post-item {
+      padding: 10px 16px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: background 0.1s;
+    }
+
+    .post-item:hover { background: #fafafa; }
+
+    .post-item.active {
+      border-left-color: #ff2442;
+      background: #fff5f6;
+    }
+
+    .post-item-title {
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .post-item-meta {
+      font-size: 11px;
+      color: #999;
+      margin-top: 3px;
+    }
+
+    .post-item-badges {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #f0f0f0;
+      color: #666;
+    }
+
+    .badge.has { background: #e8f5e9; color: #388e3c; }
+    .badge.video { background: #e3f2fd; color: #1976d2; }
+
+    #empty-state {
+      padding: 24px 16px;
+      font-size: 12px;
+      color: #aaa;
+      text-align: center;
+    }
+
+    /* ── Main chat area ── */
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #post-header {
+      padding: 14px 20px;
+      background: #fff;
+      border-bottom: 1px solid #e5e5e5;
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #post-header-text { flex: 1; min-width: 0; }
+
+    #post-header-title {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #post-header-meta {
+      font-size: 11px;
+      color: #999;
+      margin-top: 2px;
+    }
+
+    #new-chat-btn {
+      flex-shrink: 0;
+      padding: 5px 12px;
+      font-size: 12px;
+      border: 1px solid #e5e5e5;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      color: #555;
+      transition: background 0.1s;
+    }
+
+    #new-chat-btn:hover { background: #f5f5f5; }
+
+    #no-post-placeholder {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #aaa;
+      gap: 8px;
+    }
+
+    #no-post-placeholder .icon { font-size: 40px; }
+    #no-post-placeholder p { font-size: 14px; }
+
+    /* ── Messages ── */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .msg {
+      max-width: 720px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .msg.user { align-self: flex-end; align-items: flex-end; }
+    .msg.assistant { align-self: flex-start; align-items: flex-start; }
+
+    .msg-label {
+      font-size: 11px;
+      color: #aaa;
+      font-weight: 500;
+    }
+
+    .msg-bubble {
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 100%;
+    }
+
+    .msg.user .msg-bubble {
+      background: #ff2442;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg.assistant .msg-bubble {
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      border-bottom-left-radius: 4px;
+      color: #1a1a1a;
+    }
+
+    /* Markdown styles inside assistant bubble */
+    .msg-bubble p { margin: 0 0 8px; }
+    .msg-bubble p:last-child { margin-bottom: 0; }
+    .msg-bubble ul, .msg-bubble ol { padding-left: 20px; margin: 6px 0; }
+    .msg-bubble li { margin: 3px 0; }
+    .msg-bubble strong { font-weight: 600; }
+    .msg-bubble code {
+      background: #f5f5f5;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-family: monospace;
+    }
+
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 12px 16px;
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      border-radius: 12px;
+      border-bottom-left-radius: 4px;
+      width: fit-content;
+    }
+
+    .typing-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ccc;
+      animation: bounce 1.2s infinite;
+    }
+
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-5px); }
+    }
+
+    /* ── Input area ── */
+    #input-area {
+      padding: 14px 20px;
+      background: #fff;
+      border-top: 1px solid #e5e5e5;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    #input {
+      flex: 1;
+      resize: none;
+      border: 1px solid #e5e5e5;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: inherit;
+      line-height: 1.5;
+      max-height: 140px;
+      overflow-y: auto;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    #input:focus { border-color: #ff2442; }
+    #input:disabled { background: #f9f9f9; color: #aaa; }
+
+    #send-btn {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 10px;
+      background: #ff2442;
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    #send-btn:hover { background: #e01f38; }
+    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #input-hint {
+      font-size: 11px;
+      color: #bbb;
+      text-align: center;
+      padding: 0 20px 10px;
+      background: #fff;
+    }
+
+    .error-msg {
+      color: #c62828;
+      background: #ffebee;
+      border: 1px solid #ef9a9a;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      align-self: center;
+      max-width: 600px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h1>XHS Chat</h1>
+    <p>Select a post to start chatting</p>
+  </div>
+  <div id="post-list">
+    <div id="empty-state">Loading posts...</div>
+  </div>
+</div>
+
+<div id="main">
+  <div id="post-header">
+    <div id="no-post-placeholder" style="display:flex; width:100%; justify-content:center; align-items:center;">
+      <span style="color:#aaa; font-size:14px;">← Select a post from the sidebar</span>
+    </div>
+    <div id="post-header-text" style="display:none;">
+      <div id="post-header-title"></div>
+      <div id="post-header-meta"></div>
+    </div>
+    <button id="new-chat-btn" style="display:none;" onclick="newChat()">New chat</button>
+  </div>
+
+  <div id="messages">
+    <div id="welcome" style="align-self:center; text-align:center; color:#aaa; margin-top:60px;">
+      <div style="font-size:32px; margin-bottom:8px;">💬</div>
+      <div style="font-size:14px;">Select a post and ask anything about it</div>
+      <div style="font-size:12px; margin-top:4px;">Content, comments, video timestamps — all fair game</div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <textarea id="input" rows="1" placeholder="Select a post first..." disabled></textarea>
+    <button id="send-btn" disabled>↑</button>
+  </div>
+  <div id="input-hint">Enter to send · Shift+Enter for new line</div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let currentPostId = null;
+  let sessionId = null;
+  let isLoading = false;
+
+  marked.setOptions({ breaks: true });
+
+  // ── Load posts ──
+  async function loadPosts() {
+    try {
+      const res = await fetch('/posts');
+      const posts = await res.json();
+      renderPostList(posts);
+    } catch {
+      $('empty-state').textContent = 'Failed to load posts.';
+    }
+  }
+
+  function renderPostList(posts) {
+    const list = $('post-list');
+    if (!posts.length) {
+      list.innerHTML = '<div id="empty-state">No posts scraped yet.<br>Run scrape.py first.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    posts.forEach(post => {
+      const el = document.createElement('div');
+      el.className = 'post-item';
+      el.dataset.postId = post.post_id;
+
+      const badges = [];
+      if (post.type === 'video') badges.push('<span class="badge video">video</span>');
+      if (post.has_analysis) badges.push('<span class="badge has">analyzed</span>');
+      if (post.has_comments) badges.push('<span class="badge has">comments</span>');
+
+      el.innerHTML = `
+        <div class="post-item-title">${escHtml(post.title || post.post_id)}</div>
+        <div class="post-item-meta">${escHtml(post.author)} · ${post.likes} likes</div>
+        ${badges.length ? `<div class="post-item-badges">${badges.join('')}</div>` : ''}
+      `;
+      el.addEventListener('click', () => selectPost(post));
+      list.appendChild(el);
+    });
+  }
+
+  // ── Select post ──
+  function selectPost(post) {
+    if (currentPostId === post.post_id) return;
+    currentPostId = post.post_id;
+    sessionId = null;
+
+    document.querySelectorAll('.post-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.postId === post.post_id);
+    });
+
+    $('no-post-placeholder').style.display = 'none';
+    $('post-header-text').style.display = 'block';
+    $('new-chat-btn').style.display = 'block';
+
+    $('post-header-title').textContent = post.title || post.post_id;
+    const meta = [post.author, post.posted_at, `${post.likes} likes`].filter(Boolean).join(' · ');
+    $('post-header-meta').textContent = meta;
+
+    clearMessages();
+    $('input').disabled = false;
+    $('input').placeholder = 'Ask anything about this post...';
+    $('input').focus();
+    updateSendBtn();
+  }
+
+  // ── Chat ──
+  async function sendMessage() {
+    if (isLoading || !currentPostId) return;
+    const text = $('input').value.trim();
+    if (!text) return;
+
+    $('input').value = '';
+    autoResize();
+    isLoading = true;
+    updateSendBtn();
+
+    hideWelcome();
+    appendMessage('user', text);
+    const typingEl = appendTyping();
+
+    try {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: currentPostId, message: text, session_id: sessionId }),
+      });
+      typingEl.remove();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+        appendError(err.detail || 'Request failed');
+      } else {
+        const data = await res.json();
+        sessionId = data.session_id;
+        appendMessage('assistant', data.reply);
+      }
+    } catch (e) {
+      typingEl.remove();
+      appendError('Network error — is the server running?');
+    }
+
+    isLoading = false;
+    updateSendBtn();
+    $('input').focus();
+  }
+
+  function newChat() {
+    if (sessionId) {
+      fetch(`/chat/${sessionId}`, { method: 'DELETE' }).catch(() => {});
+    }
+    sessionId = null;
+    clearMessages();
+    $('input').focus();
+  }
+
+  // ── DOM helpers ──
+  function appendMessage(role, text) {
+    const msgs = $('messages');
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+
+    const label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = role === 'user' ? 'You' : 'AI';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    if (role === 'assistant') {
+      bubble.innerHTML = marked.parse(text);
+    } else {
+      bubble.textContent = text;
+    }
+
+    div.appendChild(label);
+    div.appendChild(bubble);
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  function appendTyping() {
+    const msgs = $('messages');
+    const div = document.createElement('div');
+    div.className = 'msg assistant';
+    div.innerHTML = `
+      <div class="msg-label">AI</div>
+      <div class="typing-indicator">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  function appendError(msg) {
+    const msgs = $('messages');
+    const div = document.createElement('div');
+    div.className = 'error-msg';
+    div.textContent = `Error: ${msg}`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function clearMessages() {
+    $('messages').innerHTML = '';
+    const welcome = document.createElement('div');
+    welcome.id = 'welcome';
+    welcome.style.cssText = 'align-self:center; text-align:center; color:#aaa; margin-top:60px;';
+    welcome.innerHTML = '<div style="font-size:32px; margin-bottom:8px;">💬</div><div style="font-size:14px;">Ask anything about this post</div>';
+    $('messages').appendChild(welcome);
+  }
+
+  function hideWelcome() {
+    const w = $('welcome');
+    if (w) w.remove();
+  }
+
+  function updateSendBtn() {
+    const btn = $('send-btn');
+    btn.disabled = isLoading || !currentPostId || !$('input').value.trim();
+  }
+
+  function autoResize() {
+    const el = $('input');
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Events ──
+  $('input').addEventListener('input', () => { autoResize(); updateSendBtn(); });
+
+  $('input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  $('send-btn').addEventListener('click', sendMessage);
+
+  loadPosts();
+</script>
+</body>
+</html>

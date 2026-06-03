@@ -6,6 +6,7 @@ import json
 import logging
 import pathlib
 import sys
+import time
 
 from xhs import config
 
@@ -99,8 +100,12 @@ def main() -> None:
     cookies = load_cookies(cookie_file)
     session = make_session(cookies)
 
-    logging.info("Fetching: %s", url)
+    t0 = time.monotonic()
+
+    logging.info("[1/4] Fetching post metadata...")
+    t = time.monotonic()
     state = fetch_initial_state(url, session)
+    logging.info("      done in %.1fs", time.monotonic() - t)
 
     if args.debug:
         debug_path = data_dir / "debug_state.json"
@@ -112,16 +117,31 @@ def main() -> None:
         logging.error("Could not extract post data. Re-run with --debug to inspect state.")
         sys.exit(1)
 
+    step = 2
+    total_steps = 2 + bool(args.analyze) + (args.comments is not None)
+
     if post["images"]:
+        logging.info("[%d/%d] Downloading %d image(s)...", step, total_steps, len(post["images"]))
+        t = time.monotonic()
         download_images(post, session, data_dir)
+        logging.info("      done in %.1fs", time.monotonic() - t)
+    step += 1
 
     if args.analyze:
-        if post["type"] == "video" and post["video"]:
-            post["analysis"] = gemini.analyze_video(post, data_dir)
-        elif post["images"]:
-            post["analysis"] = gemini.analyze_images(post, data_dir)
-        else:
-            logging.warning("--analyze: post has no images or video — skipping.")
+        label = "video" if post["type"] == "video" else f"{len(post['images'])} image(s)"
+        logging.info("[%d/%d] Running Gemini analysis on %s...", step, total_steps, label)
+        t = time.monotonic()
+        try:
+            if post["type"] == "video" and post["video"]:
+                post["analysis"] = gemini.analyze_video(post, data_dir)
+            elif post["images"]:
+                post["analysis"] = gemini.analyze_images(post, data_dir)
+            else:
+                logging.warning("--analyze: post has no images or video — skipping.")
+            logging.info("      done in %.1fs", time.monotonic() - t)
+        except Exception as exc:
+            logging.error("Analysis failed: %s — post will be saved without analysis.", exc)
+        step += 1
 
     has_comments = False
     if args.comments is not None:
@@ -129,16 +149,19 @@ def main() -> None:
         reply_k = args.replies if args.replies is not None else 0
         reply_n = config.DEFAULT_REPLY_N if reply_k > 0 else 0
         if reply_k > 0:
-            logging.info("Scraping top %d comments + smart replies (heuristic K=%d, LLM N=%d)...", args.comments, reply_k, reply_n)
+            logging.info("[%d/%d] Scraping top %d comments + smart replies (heuristic K=%d, LLM N=%d)...", step, total_steps, args.comments, reply_k, reply_n)
         else:
-            logging.info("Scraping top %d comments...", args.comments)
+            logging.info("[%d/%d] Scraping top %d comments...", step, total_steps, args.comments)
+        t = time.monotonic()
         comments = scrape_comments(url, post["id"], args.comments, cookie_file, reply_k=reply_k, reply_n=reply_n)
         save_comments_json(post["id"], comments, args.comments, data_dir)
         has_comments = bool(comments)
+        logging.info("      done in %.1fs — %d comment(s) saved", time.monotonic() - t, len(comments))
 
     print_post(post)
     save_post_json(post, data_dir)
     update_index(post, url, data_dir, has_comments=has_comments)
+    logging.info("Total time: %.1fs", time.monotonic() - t0)
 
 
 if __name__ == "__main__":
