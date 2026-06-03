@@ -3,6 +3,7 @@ import pathlib
 GEMINI_MODEL = "gemini-2.5-flash"
 
 DEFAULT_COOKIE_FILE = pathlib.Path.home() / "cookies_rednote.json"
+DEFAULT_AUTH_STATE_FILE = pathlib.Path.home() / "xhs_auth.json"
 DEFAULT_COMMENTS_N = 50
 DEFAULT_REPLY_K = 10   # heuristic pool size
 DEFAULT_REPLY_N = 3    # LLM picks this many threads to actually fetch
