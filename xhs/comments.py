@@ -32,35 +32,18 @@ def scrape_comments(
 
     xsec_token = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("xsec_token", [""])[0]
 
-    # Use full browser auth state (cookies + localStorage) if available.
-    # This enables the page's JS to recognise the user as logged in,
-    # which is required for "expand replies" buttons to work.
-    auth_state = str(config.DEFAULT_AUTH_STATE_FILE) if config.DEFAULT_AUTH_STATE_FILE.exists() else None
-    if auth_state:
-        logger.info("Loading saved auth state from %s", auth_state)
-    else:
-        logger.info("No auth state file found — using cookies only (sub-comment expansion disabled). Run --setup to enable.")
-
     collected: list[dict] = []
     seen_ids: set[str] = set()
     has_more = True
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        if auth_state:
-            context = browser.new_context(
-                storage_state=auth_state,
-                viewport={"width": 1280, "height": 900},
-                user_agent=config.HEADERS["User-Agent"],
-                locale="zh-CN",
-            )
-        else:
-            context = browser.new_context(
-                viewport={"width": 1280, "height": 900},
-                user_agent=config.HEADERS["User-Agent"],
-                locale="zh-CN",
-            )
-            context.add_cookies(pw_cookies)
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 900},
+            user_agent=config.HEADERS["User-Agent"],
+            locale="zh-CN",
+        )
+        context.add_cookies(pw_cookies)
         page = context.new_page()
 
         def _on_response(response: Response) -> None:
@@ -155,27 +138,16 @@ def _enrich_with_replies(
     logger.info("LLM selected %d thread(s) as most insightful.", len(selected_ids))
 
     selected_set = set(selected_ids)
-    has_full_auth = config.DEFAULT_AUTH_STATE_FILE.exists()
-
     for comment in comments:
         cid = comment["id"]
         if cid in selected_set:
-            if has_full_auth:
-                # Try to fetch all replies via page interaction
-                fetched = _fetch_sub_comments(page, post_id, cid, xsec_token)
-                if fetched:
-                    comment["replies"] = fetched
-                    comment.pop("replies_has_more", None)
-                    logger.info("Fetched %d replies for thread %s (LLM pick)", len(fetched), cid)
-                else:
-                    # Fall back to pre-loaded
-                    logger.info("Thread %s: using pre-loaded reply (%d total)", cid, comment.get("sub_comment_count", 0))
-                    if comment.get("replies_has_more"):
-                        comment["replies_note"] = f"{comment.get('sub_comment_count', 0)} total replies; only pre-loaded preview available"
-            else:
-                # No full auth — use pre-loaded reply
-                if comment.get("replies_has_more"):
-                    comment["replies_note"] = f"{comment.get('sub_comment_count', 0)} total replies; run --setup for full access"
+            replies = comment.get("replies", [])
+            logger.info(
+                "Thread %s: %d pre-loaded reply, %d total (LLM pick)",
+                cid, len(replies), comment.get("sub_comment_count", 0),
+            )
+            if comment.get("replies_has_more"):
+                comment["replies_note"] = f"{comment.get('sub_comment_count', 0)} total replies; showing top pre-loaded reply"
         elif "replies" in comment:
             del comment["replies"]
             comment.pop("replies_has_more", None)
@@ -233,50 +205,11 @@ Example: ["id1", "id2"]"""
 
 
 def _fetch_sub_comments(page: Page, note_id: str, root_comment_id: str, xsec_token: str) -> list[dict]:
-    """
-    Fetch sub-comments by intercepting XHS's own signed API call.
-    Requires a fully authenticated session (xhs_auth.json from --setup).
-    """
-    if not config.DEFAULT_AUTH_STATE_FILE.exists():
-        logger.debug("No auth state — skipping sub-comment fetch for %s.", root_comment_id)
-        return []
-
-    captured: list[dict] = []
-
-    def _on_sub(response: Response) -> None:
-        if config.SUB_COMMENT_API_PATH not in response.url:
-            return
-        if root_comment_id not in response.url:
-            return
-        try:
-            data = response.json()
-        except Exception:
-            return
-        if data.get("code") == 0:
-            captured.extend(data.get("data", {}).get("comments", []))
-
-    page.on("response", _on_sub)
-
-    # Click all "expand replies" buttons — with full auth, these trigger real API calls.
-    # We use force=True to bypass any overlay, and fall back to JS click.
-    btns = page.locator("div.show-more")
-    count = btns.count()
-    for i in range(count):
-        try:
-            btns.nth(i).click(force=True, timeout=2000)
-        except Exception:
-            pass
-    page.wait_for_timeout(3000)
-
-    page.remove_listener("response", _on_sub)
-
-    if not captured:
-        logger.debug("No sub-comment responses captured for %s.", root_comment_id)
-        return []
-
-    normalized = [_normalize_comment(s, include_replies=False) for s in captured]
-    normalized.sort(key=lambda c: c["like_count"], reverse=True)
-    return normalized
+    # XHS's sub-comment API requires cryptographic signing headers generated by their
+    # frontend JS and tied to a browser fingerprint. Replicating this outside the
+    # user's real Chrome session is not feasible. Sub-comments are instead surfaced
+    # from the 1 reply XHS pre-loads per thread in the initial comment response.
+    return []
 
 
 def _parse_count(value) -> int:
