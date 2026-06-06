@@ -60,6 +60,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
+        "--insights-only",
+        action="store_true",
+        help=(
+            "Generate insights for an already-analyzed post without re-running the vision call. "
+            "Skips if insights already exist. Useful when --analyze succeeded but insights "
+            "failed due to a token quota error."
+        ),
+    )
+    p.add_argument(
         "--debug",
         action="store_true",
         help="Save debug_state.json and enable DEBUG logging",
@@ -89,6 +98,14 @@ def main() -> None:
 
     # Accept rednote.com URLs by rewriting to xiaohongshu.com
     url = args.url.replace("www.rednote.com", "www.xiaohongshu.com")
+
+    if args.insights_only:
+        import re as _re
+        from xhs import analysis as gemini
+        m = _re.search(r"/explore/([0-9a-f]+)", url)
+        post_id = m.group(1) if m else url
+        success = gemini.run_insights_for_post(post_id, data_dir)
+        sys.exit(0 if success else 1)
 
     from xhs.cookies import load_cookies
     from xhs.fetcher import fetch_initial_state, make_session

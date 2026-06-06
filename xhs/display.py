@@ -36,4 +36,23 @@ def print_post(post: dict) -> None:
                 print(f"      [Image {img.get('index')}] {text_preview}{'...' if len(img.get('extracted_text','')) > 80 else ''}")
         if "full_text" in a and a["full_text"]:
             print(f"    Full text preview: {a['full_text'][:200]}...")
+        insights = a.get("insights") or {}
+        if isinstance(insights, list):
+            qa_pairs, verdict, tldw = insights, "", []
+        else:
+            qa_pairs = insights.get("questions") or []
+            verdict = insights.get("value_verdict", "")
+            tldw = insights.get("tldw") or []
+        if verdict:
+            print(f"    Value verdict: {verdict}")
+        if tldw:
+            print(f"    TL;DW:")
+            for b in tldw:
+                print(f"      • {b}")
+        if qa_pairs:
+            print(f"    Insights ({len(qa_pairs)} questions):")
+            for item in qa_pairs:
+                print(f"      Q: {item.get('question', '')}")
+                answer_preview = (item.get('answer') or '')[:120]
+                print(f"      A: {answer_preview}{'...' if len(item.get('answer', '')) > 120 else ''}")
     print(sep)

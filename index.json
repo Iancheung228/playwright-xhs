@@ -160,5 +160,26 @@
     "has_comments": false,
     "content_type": "educational article",
     "scraped_at": "2026-06-03 08:20:49"
+  },
+  {
+    "post_id": "6a08325a000000003703525d",
+    "url": "https://www.xiaohongshu.com/explore/6a08325a000000003703525d?xsec_token=ABCOtMShr4ozMnsxd6SIWw-0HoA7yWqHSptnas3XOZrUQ=&xsec_source=pc_search&source=web_explore_feed",
+    "title": "如何在6-12个月内彻底重塑自我-Dan Koe",
+    "type": "video",
+    "author": "熵序",
+    "author_id": "5e47942f00000000010041fe",
+    "posted_at": "2026-05-16 05:01:14",
+    "ip_location": "江苏",
+    "likes": "32",
+    "collects": "35",
+    "comments": "1",
+    "shares": "3",
+    "tags": [],
+    "images_count": 1,
+    "has_video": true,
+    "has_analysis": true,
+    "has_comments": false,
+    "content_type": "motivational clip",
+    "scraped_at": "2026-06-06 09:59:36"
   }
 ]

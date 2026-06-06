@@ -177,11 +177,153 @@ Return only valid JSON with no markdown formatting."""
         result["analyzed_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         client.files.delete(name=video_file.name)
 
+        transcript_text = "\n".join(
+            f"[{t.get('time', '?')}] {t.get('speaker', 'Speaker')}: {t.get('text', '')}"
+            for t in result.get("transcription") or []
+        )
+        input_text = transcript_text or post.get("body", "")
+        logger.info("Generating insights...")
+        result["insights"] = _run_insights(input_text, client)
+
     finally:
         os.unlink(tmp_path)
         logger.info("Temp video file deleted.")
 
     return result
+
+
+def _run_insights(text: str, client) -> dict:
+    """
+    Deep analysis of post text: 5 Q&A pairs, a first-principles value verdict,
+    and a 3-bullet TL;DW summary.
+    """
+    if not text or not text.strip():
+        return {}
+
+    prompt = f"""You are a rigorous intellectual analyst and gatekeeper. A user is deciding whether this content is worth their time. Your job is to evaluate it honestly and critically — most content recycles familiar ideas in new packaging, and you should say so plainly when that's the case.
+
+Analyze the following text in three parts:
+
+PART 1 — 5 Essential Questions
+Generate exactly 5 deep questions that together capture the full intellectual substance of this content. Go beyond surface-level summaries. Good questions expose the author's assumptions, test the strength of their argument, surface what's actually novel vs. well-known, and draw out implications the author may not have stated explicitly. Answer each question in detail, drawing only from the provided text.
+
+PART 2 — Value Verdict
+In 2-3 sentences, assess from first principles: what is the genuine intellectual value of this content? Is the core idea truly novel, or is it a repackaging of existing concepts dressed up in new language? Is the reasoning rigorous or mostly rhetorical? Be direct and honest — a verdict of "low original value" is a valid and useful output.
+
+PART 3 — TL;DW (Too Long; Didn't Watch)
+Provide exactly 3 bullet points that capture the ultimate takeaways. These should be decisive and opinionated — not just neutral summaries, but the 3 things that most determine whether this content deserves someone's attention.
+
+Text:
+{text}"""
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "questions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "answer": {"type": "string"},
+                    },
+                },
+            },
+            "value_verdict": {"type": "string"},
+            "tldw": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+        },
+    }
+    # The insights call is text-only but still token-heavy (long transcripts).
+    # On the free tier (250k input tokens/min) it can hit RESOURCE_EXHAUSTED
+    # right after a large video analysis call. We parse the retryDelay from the
+    # error and do one retry rather than failing silently.
+    def _call():
+        response = client.models.generate_content(
+            model=config.GEMINI_MODEL,
+            contents=[{"role": "user", "parts": [{"text": prompt}]}],
+            config={"response_mime_type": "application/json", "response_schema": schema},
+        )
+        result = json.loads(response.text)
+        return result if isinstance(result, dict) else {}
+
+    try:
+        return _call()
+    except Exception as exc:
+        exc_str = str(exc)
+        if "RESOURCE_EXHAUSTED" in exc_str:
+            match = re.search(r"retry in (\d+)", exc_str)
+            wait = int(match.group(1)) + 5 if match else 35
+            logger.warning("Token quota hit — retrying insights in %ds...", wait)
+            time.sleep(wait)
+            try:
+                return _call()
+            except Exception as exc2:
+                logger.warning("Insights generation failed after retry: %s", exc2)
+                return {}
+        logger.warning("Insights generation failed: %s", exc)
+        return {}
+
+
+def run_insights_for_post(post_id: str, data_dir: pathlib.Path) -> bool:
+    """
+    Generate insights for an already-analyzed post without re-running the
+    expensive vision call. Skips silently if insights already exist.
+    Returns True if insights were written, False otherwise.
+    """
+    post_path = data_dir / post_id / "post.json"
+    if not post_path.exists():
+        logger.error("No post.json found for %s — scrape the post first.", post_id)
+        return False
+
+    post = json.loads(post_path.read_text())
+    analysis = post.get("analysis") or {}
+
+    if not analysis:
+        logger.error("No analysis found for %s — run --analyze first.", post_id)
+        return False
+
+    existing = analysis.get("insights")
+    if existing and (isinstance(existing, dict) and existing.get("questions") or
+                     isinstance(existing, list) and existing):
+        logger.info("Insights already present for %s — skipping.", post_id)
+        return False
+
+    if post.get("type") == "video":
+        transcript_text = "\n".join(
+            f"[{t.get('time', '?')}] {t.get('speaker', 'Speaker')}: {t.get('text', '')}"
+            for t in analysis.get("transcription") or []
+        )
+        input_text = transcript_text or post.get("body", "")
+    else:
+        input_text = analysis.get("full_text") or post.get("body", "")
+
+    if not input_text:
+        logger.error("No text content found for %s to generate insights from.", post_id)
+        return False
+
+    client = _make_gemini_client()
+    logger.info("Generating insights for %s...", post_id)
+    insights = _run_insights(input_text, client)
+
+    if not insights:
+        logger.error("Insights generation failed for %s.", post_id)
+        return False
+
+    analysis["insights"] = insights
+    post["analysis"] = analysis
+
+    import tempfile, os as _os
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=post_path.parent, delete=False, suffix=".tmp"
+    ) as tmp:
+        tmp.write(json.dumps(post, indent=2, ensure_ascii=False))
+        tmp_path = tmp.name
+    _os.replace(tmp_path, post_path)
+    logger.info("Insights saved to %s", post_path)
+    return True
 
 
 def analyze_images(post: dict, data_dir: pathlib.Path) -> dict:
@@ -247,4 +389,9 @@ Return only valid JSON with no markdown formatting."""
     result = parse_gemini_json(response.text)
     result["model"] = config.GEMINI_MODEL
     result["analyzed_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    input_text = result.get("full_text") or post.get("body", "")
+    logger.info("Generating insights...")
+    result["insights"] = _run_insights(input_text, client)
+
     return result

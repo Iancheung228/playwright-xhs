@@ -61,6 +61,25 @@ Body:
                 sections.append("\n=== IMAGE DESCRIPTIONS ===\n" + "\n".join(img_lines))
             if analysis.get("summary"):
                 sections.append(f"\n=== POST SUMMARY ===\n{analysis['summary']}")
+        insights = analysis.get("insights") or {}
+        # handle legacy format (list) and current format (dict)
+        if isinstance(insights, list):
+            qa_pairs, verdict, tldw = insights, "", []
+        else:
+            qa_pairs = insights.get("questions") or []
+            verdict = insights.get("value_verdict", "")
+            tldw = insights.get("tldw") or []
+        if verdict:
+            sections.append(f"\n=== VALUE VERDICT ===\n{verdict}")
+        if tldw:
+            bullets = "\n".join(f"• {b}" for b in tldw)
+            sections.append(f"\n=== TL;DW ===\n{bullets}")
+        if qa_pairs:
+            lines = "\n".join(
+                f"Q{i+1}: {item['question']}\nA{i+1}: {item['answer']}"
+                for i, item in enumerate(qa_pairs)
+            )
+            sections.append(f"\n=== KEY INSIGHTS ===\n{lines}")
     else:
         sections.append(
             "\n(No Gemini analysis available — image/video content cannot be described. "
