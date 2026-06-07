@@ -213,6 +213,9 @@ In 2-3 sentences, assess from first principles: what is the genuine intellectual
 PART 3 — TL;DW (Too Long; Didn't Watch)
 Provide exactly 3 bullet points that capture the ultimate takeaways. These should be decisive and opinionated — not just neutral summaries, but the 3 things that most determine whether this content deserves someone's attention.
 
+PART 4 — Key Quotes
+Select exactly 3 verbatim phrases or sentences copied directly from the text above that best encapsulate the essence of the content. These must be literal extracts — do not paraphrase or rewrite. Choose lines that a reader could use as a standalone representation of what this content is fundamentally about.
+
 Text:
 {text}"""
 
@@ -231,6 +234,10 @@ Text:
             },
             "value_verdict": {"type": "string"},
             "tldw": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "key_quotes": {
                 "type": "array",
                 "items": {"type": "string"},
             },

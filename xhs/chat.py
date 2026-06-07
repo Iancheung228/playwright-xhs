@@ -69,11 +69,15 @@ Body:
             qa_pairs = insights.get("questions") or []
             verdict = insights.get("value_verdict", "")
             tldw = insights.get("tldw") or []
+            key_quotes = insights.get("key_quotes") or []
         if verdict:
             sections.append(f"\n=== VALUE VERDICT ===\n{verdict}")
         if tldw:
             bullets = "\n".join(f"• {b}" for b in tldw)
             sections.append(f"\n=== TL;DW ===\n{bullets}")
+        if key_quotes:
+            quoted = "\n".join(f'"{q}"' for q in key_quotes)
+            sections.append(f"\n=== KEY QUOTES ===\n{quoted}")
         if qa_pairs:
             lines = "\n".join(
                 f"Q{i+1}: {item['question']}\nA{i+1}: {item['answer']}"

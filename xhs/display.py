@@ -43,12 +43,17 @@ def print_post(post: dict) -> None:
             qa_pairs = insights.get("questions") or []
             verdict = insights.get("value_verdict", "")
             tldw = insights.get("tldw") or []
+            key_quotes = insights.get("key_quotes") or []
         if verdict:
             print(f"    Value verdict: {verdict}")
         if tldw:
             print(f"    TL;DW:")
             for b in tldw:
                 print(f"      • {b}")
+        if key_quotes:
+            print(f"    Key quotes:")
+            for q in key_quotes:
+                print(f"      \"{q}\"")
         if qa_pairs:
             print(f"    Insights ({len(qa_pairs)} questions):")
             for item in qa_pairs:
